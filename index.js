@@ -12,47 +12,50 @@ app.use(bodyParser.json());
 const port = process.env.PORT == undefined ? 3000 : process.env.PORT;
 /* why is this not getting sent? */
 const secret = process.env.SECRET == undefined ? 'password' : process.env.SECRET;
-const auth_token = process.env.AUTH_TOKEN == undefined ? 'words' : process.env.AUTH_TOKEN;
+const auth_token = process.env.AUTH_TOKEN == undefined ? 'meme' : process.env.AUTH_TOKEN;
 const debug_mode = process.env.DEBUG_MODE != undefined;
 
 /* webhook handler */
 app.post('/webhook', function (req, res) {
     // log webhook info
-    console.log('[' + chalk.blue('INF') + '] PR #' + req.body.number + ' to ' + req.body.repository.full_name + ' ' + req.body.action + ' by ' + req.body.sender.login);
+    console.log('[' + chalk.blue('INF') + '] PR #' + req.body.number + ' to ' + req.body.repository.full_name + ' ' + req.body.action + ' by ' + req.body.sender.login + ' (HEAD = ' + req.body.pull_request.head.sha + ')');
 
     // reply ok
     res.send('OK!');
 
     // only merge if opened event
-    if (req.body.action != 'opened') return;
+    if (req.body.action != 'opened' && req.body.action != 'synchronize') return;
 
     // log debug info
     if (debug_mode) console.log(req.body);
 
-    // send HTTP request
-    request({
-        // proper URL
-        url: 'https://api.github.com/repos/' + req.body.repository.full_name + '/pulls/' + req.body.number + '/merge',
-        method: 'PUT',
-        headers: {
-            // authorization token + user agent
-            'Authorization': 'token ' + auth_token,
-            'User-Agent': 'sendprshere-bot via request'
-        },
-        json: {
-            // json stuff
-            commit_title: 'Merge pull request #' + req.body.number + ' from ' + req.body.sender.login,
-            commit_message: req.body.pull_request.body,
-            sha: req.body.pull_request.head.sha,
-            merge_method: 'merge'
-        }
-    }, function(error, request, body) {
-        if (error) {
-            console.log(error);
-        } else {
-            console.log('[' + chalk.green('YAY') + '] PR #' + req.body.number + ' to ' + req.body.repository.full_name + ' merged!');
-        }
-    });
+    setTimeout(function() {
+        // send HTTP request (after delay)
+        request({
+            // proper URL
+            url: 'https://api.github.com/repos/' + req.body.repository.full_name + '/pulls/' + req.body.number + '/merge',
+            method: 'PUT',
+            headers: {
+                // authorization token + user agent
+                'Authorization': 'token ' + auth_token,
+                'User-Agent': 'sendprshere-bot via request'
+            },
+            json: {
+                // json stuff
+                commit_title: 'Merge pull request #' + req.body.number + ' from ' + req.body.sender.login,
+                commit_message: req.body.pull_request.body,
+                sha: req.body.pull_request.head.sha,
+                merge_method: 'merge'
+            }
+        }, function(error, request, body) {
+            if ('merged' in body && body['merged'] == true) {
+                console.log('[' + chalk.green('YAY') + '] PR #' + req.body.number + ' to ' + req.body.repository.full_name + ' merged!');
+            } else {
+                console.log('[' + chalk.red('ERR') + '] PR #' + req.body.number + ' failed to merge: ' + body.message);
+                if (debug_mode) console.log(body);
+            }
+        });
+    }, 5000);
     
     // send encouraging comment
     request({
